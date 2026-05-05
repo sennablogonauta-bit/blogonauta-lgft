@@ -1,32 +1,19 @@
 /**
- * Sessão do painel /admin: cookie `admin_session` = HMAC estável a partir de
- * ADMIN_USER + ADMIN_PASS (+ SESSION_SECRET opcional).
+ * Sessão do painel /admin: cookie `admin_session` = HMAC a partir das mesmas
+ * credenciais que src/lib/admin-env.ts (ADMIN_USER + ADMIN_PASSWORD).
  */
 
 import type { AstroCookies } from 'astro';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { getAdminCredentials, usesFallbackAdminCredentials } from './admin-env';
 
 export const ADMIN_SESSION_COOKIE = 'admin_session';
 
-/** Lê credenciais do .env sem espaços acidentais (comuns em cópia/colar ou CRLF no Windows). */
-export function getAdminCredentials(): { user: string; pass: string; secret: string } | null {
-	const rawUser = import.meta.env.ADMIN_USER;
-	const rawPass = import.meta.env.ADMIN_PASS;
-	const rawSecret = import.meta.env.SESSION_SECRET;
-	const user = typeof rawUser === 'string' ? rawUser.trim() : '';
-	const pass = typeof rawPass === 'string' ? rawPass.trim() : '';
-	if (!user.length || !pass.length) return null;
-	const secret =
-		typeof rawSecret === 'string' && rawSecret.trim().length
-			? rawSecret.trim()
-			: pass;
-	return { user, pass, secret };
-}
+export { getAdminCredentials, usesFallbackAdminCredentials } from './admin-env';
 
 /** Gera o valor esperado do cookie (após login bem-sucedido). */
-export function getAdminSessionTokenValue(): string | null {
+export function getAdminSessionTokenValue(): string {
 	const creds = getAdminCredentials();
-	if (!creds) return null;
 	return createHmac('sha256', creds.secret)
 		.update('blogonauta:admin:session:' + creds.user)
 		.digest('hex');
@@ -34,7 +21,7 @@ export function getAdminSessionTokenValue(): string | null {
 
 export function isValidAdminSession(token: string | undefined | null): boolean {
 	const expected = getAdminSessionTokenValue();
-	if (!expected || !token) return false;
+	if (!token) return false;
 	try {
 		const a = Buffer.from(token, 'utf8');
 		const b = Buffer.from(expected, 'utf8');
@@ -45,8 +32,9 @@ export function isValidAdminSession(token: string | undefined | null): boolean {
 	}
 }
 
+/** @deprecated Prefira `usesFallbackAdminCredentials` importado de `admin-env`. */
 export function adminEnvConfigured(): boolean {
-	return getAdminCredentials() !== null;
+	return !usesFallbackAdminCredentials();
 }
 
 /** Comparação em tempo aproximadamente constante para user/senha no login. */
